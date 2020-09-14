@@ -1,0 +1,9 @@
+/*
+!.gitignore
+
+!/2020_Monsoon_prediction/
+/2020_Monsoon_prediction/*
+!/2020_Monsoon_prediction/Analysis/
+/2020_Monsoon_prediction/Analysis/*
+
+!**/**/*.py
