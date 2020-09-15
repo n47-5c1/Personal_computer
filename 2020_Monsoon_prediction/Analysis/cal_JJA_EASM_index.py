@@ -25,7 +25,7 @@ print(uwnd)
 clim = uwnd.groupby('time.month').mean('time')
 anom = uwnd.groupby('time.month') - clim
 signal.detrend(anom, axis=0, overwrite_data=True)
-print(anom)
+#print(anom)
 
 #Calculate the JJA index (Wang and Fan 1999)
 where_month = [i.month in [6,7,8] for i in uwnd_datetime[where_year]]
@@ -33,6 +33,7 @@ weights = month_length[where_month].groupby('time.year') / month_length[where_mo
 U850_S = anom[where_month].sel(lat=slice(15, 5), lon=slice(90, 130)).mean(('lat', 'lon'))
 U850_N = anom[where_month].sel(lat=slice(32.5, 22.5), lon=slice(110, 140)).mean(('lat', 'lon'))
 EASMI = ((U850_S - U850_N) * weights).groupby('time.year').sum()
+EASMI.name = 'EASMI'
 EASMI.attrs = uwnd.attrs
 print(EASMI)
 EASMI.to_pandas().plot()
