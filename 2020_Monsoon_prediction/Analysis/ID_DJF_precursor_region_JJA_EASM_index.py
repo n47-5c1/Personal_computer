@@ -32,7 +32,8 @@ yS = '1979-01-01'
 yE = '2019-12-31'
 a = 0.05
 s = [[0,1,0], [1,1,1], [0,1,0]]
-map_crs = cartopy.crs.PlateCarree(central_longitude=180)
+map_crs = cartopy.crs.PlateCarree(central_longitude=200)
+#map_crs = cartopy.crs.NorthPolarStereo()
 data_crs = cartopy.crs.PlateCarree()
 
 def anom_dtrend(x):
@@ -162,6 +163,7 @@ def plot_fig(corr, pval,labeled, N):
     fig2, axes2 = pyplot.subplots(3, 1, subplot_kw=dict(projection=map_crs))
     fig2.subplots_adjust(hspace=0.3)
     for i in range(3):
+        #axes2[i].set_extent([-90, 30, -45, 30], cartopy.crs.PlateCarree())
         im = labeled[i].plot.pcolormesh(
             ax=axes2[i], add_colorbar=False, cmap='nipy_spectral_r',
             levels=range(N.max().data), transform=data_crs
@@ -331,14 +333,17 @@ mslp_Feb_mean = in3_file['mslp_Feb_mean']
 
 #Plot the results
 #labeled_sst[0] = labeled_sst[0].where(numpy.any(numpy.array(
-#    [labeled_sst[0].data == i for i in numpy.array([4])]#9 4
+#    [labeled_sst[0].data == i for i in numpy.array([4])]#5,11,4
 #), axis=0), 0)
 #labeled_sst[1] = labeled_sst[1].where(numpy.any(numpy.array(
-#    [labeled_sst[1].data == i for i in numpy.array([4])]#11 12 5 4
+#    [labeled_sst[1].data == i for i in numpy.array([4])]#10,11,4
 #), axis=0), 0)
 #labeled_sst[2] = labeled_sst[2].where(labeled_sst[2] == 7, 0)
+#labeled_air[0] = labeled_air[0].where(labeled_air[0] == 8, 0)
+#labeled_air[1] = labeled_air[1].where(labeled_air[1] == 3, 0)
+#labeled_air[2] = labeled_air[2].where(labeled_air[2] == 1, 0)
 #labeled_mslp[0] = labeled_mslp[0].where(numpy.any(numpy.array(
-#    [labeled_mslp[0].data == i for i in numpy.array([16])]# 18 3 16
+#    [labeled_mslp[0].data == i for i in numpy.array([20])]#21,11,20
 #), axis=0), 0)
 #labeled_mslp[1] = labeled_mslp[1].where(labeled_mslp[1] == 9, 0)
 '''
