@@ -63,24 +63,23 @@ def corr_3D(x, y):
                 pval[i,j] = float('nan')
     return corr, pval
 
-def roll_and_mask(labeled,N, ocean_mask=False, icec=None, lat_grid=None, lon_grid=None):
-    #Mask oceanic and small (<=4) precursors
+def mask_and_cyclic(labeled,N, ocean_mask=False, icec=None, lat_grid=None, lon_grid=None):
+    #Mask oceanic and small (<=4) precursors, and make a array cyclic
     global s
+    n = 4
     if(ocean_mask):
         for i in range(3):
-            land_array = labeled[i].where(numpy.logical_or(
-                global_land_mask.globe.is_land(lat_grid, lon_grid),
-                icec >= 0.1
-            ), 0)
-            ocean_array = labeled[i].where(numpy.logical_and(
-                global_land_mask.globe.is_ocean(lat_grid, lon_grid),
-                icec < 0.1
-            ), 0)
+            land_array = labeled[i].where(
+                global_land_mask.globe.is_land(lat_grid, lon_grid) | numpy.array(icec >= 0.1), 0
+            )
+            ocean_array = labeled[i].where(
+                global_land_mask.globe.is_ocean(lat_grid, lon_grid) & numpy.array(icec < 0.1), 0
+            )
             land_label = collections.Counter(numpy.array(land_array.stack(z=('lat','lon')).data))
             ocean_label = collections.Counter(numpy.array(ocean_array.stack(z=('lat','lon')).data))
             land_mask = []
             for j in range(1, int(labeled[i].max().data) + 1):
-                if (land_label[j] > ocean_label[j] and land_label[j] > 4):
+                if (land_label[j] > ocean_label[j] and land_label[j] > n):
                     land_mask.append(j)
             labeled[i] = labeled[i].where(numpy.any(numpy.array(
                 [labeled[i] == j for j in land_mask]
@@ -88,33 +87,33 @@ def roll_and_mask(labeled,N, ocean_mask=False, icec=None, lat_grid=None, lon_gri
             #print(land_mask)
             del land_label, ocean_label, land_mask
             gc.collect()
-        lon = labeled.lon[numpy.all(labeled.max(dim='lead') == 0, axis=0)]
-        roll = numpy.argwhere(labeled.lon.data == lon[0].data)
-        labeled_p = labeled.roll(lon=-int(roll), roll_coords=True)
-        for i in range(3):
-            labeled_p[i], N[i] = scipy.ndimage.label(labeled_p[i], s)
-        labeled = labeled_p.roll(lon=int(roll), roll_coords=True)
     else:
-        lon = labeled.lon[numpy.all(labeled.max(dim='lead') == 0, axis=0)]
-        roll = numpy.argwhere(labeled.lon.data == lon[0].data)
-        labeled_p = labeled.roll(lon=-int(roll), roll_coords=True)
         for i in range(3):
             label = collections.Counter(numpy.array(labeled[i].stack(z=('lat','lon')).data))
             mask = []
             for j in range(1, int(labeled[i].max().data) + 1):
-                if label[j] > 4:
+                if label[j] > n:
                     mask.append(j)
-            labeled_p[i] = labeled_p[i].where(numpy.any(numpy.array(
-                [labeled_p[i] == j for j in mask]
+            labeled[i] = labeled[i].where(numpy.any(numpy.array(
+                [labeled[i] == j for j in mask]
             ), axis=0), 0)
-            labeled_p[i], N[i] = scipy.ndimage.label(labeled_p[i], s)
+            labeled[i], N[i] = scipy.ndimage.label(labeled[i], s)
             #print(mask)
             del label, mask
             gc.collect()
-        labeled = labeled_p.roll(lon=int(roll), roll_coords=True)
+    for i in range(3):
+        for j in range(labeled.lat.size):
+            if labeled[i,j,0] != 0 and labeled[i,j,-1] != 0 and labeled[i,j,0] != labeled[i,j,-1]:
+                labeled[i] = labeled[i].where(labeled[i] != labeled[i,j,-1], labeled[i,j,0])
+        seq = sorted(set(labeled[i].stack(z=('lat','lon')).data))
+        a = 1
+        for j in seq[1:]:
+            labeled[i] = labeled[i].where(labeled[i] != j, a)
+            a += 1
+        N[i] = labeled[i].max().data
     return labeled, N
 
-def cal_series(anom, labeled, mon,dim_name):
+def cal_series(anom, labeled, mon, dim_name):
     #Create time series of the precursors
     N = int(labeled.max().data)
     monthtime = pandas.to_datetime(anom.time.data).month
@@ -234,9 +233,9 @@ mslp_corr[0], mslp_pval[0] = corr_3D(
     mslp_anom.isel(time=[i.year < datetime[-1].year and i.month == 12 for i in datetime])
 )
 for i in range(1,3):
-    sst_corr[i], sst_pval[i] = corr_3D(EASMI, sst_anom[datetime.month == i])
-    air_corr[i], air_pval[i] = corr_3D(EASMI, air_anom[datetime.month == i])
-    mslp_corr[i], mslp_pval[i] = corr_3D(EASMI, mslp_anom[datetime.month == i])
+    sst_corr[i], sst_pval[i] = corr_3D(EASMI[1:], sst_anom[11+i::12])
+    air_corr[i], air_pval[i] = corr_3D(EASMI[1:], air_anom[11+i::12])
+    mslp_corr[i], mslp_pval[i] = corr_3D(EASMI[1:], mslp_anom[11+i::12])
 #print(sst_corr)
 #print(sst_pval)
 #print(air_corr)
@@ -255,11 +254,9 @@ for i in range(3):
     labeled_sst[i], N_sst[i] = scipy.ndimage.label(numpy.where(sst_pval[i] <= a, sst_pval[i], 0), s)
     labeled_air[i], N_air[i] = scipy.ndimage.label(numpy.where(air_pval[i] <= a, air_pval[i], 0), s)
     labeled_mslp[i], N_mslp[i] = scipy.ndimage.label(numpy.where(mslp_pval[i] <= a, mslp_pval[i], 0), s)
-labeled_sst, N_sst = roll_and_mask(labeled_sst, N_sst)
-labeled_air, N_air = roll_and_mask(labeled_air, N_air, True, icec, lat_grid, lon_grid)
-labeled_mslp, N_mslp = roll_and_mask(labeled_mslp, N_mslp)
-print(labeled_sst)
-print(labeled_sst.max().data)
+labeled_sst, N_sst = mask_and_cyclic(labeled_sst, N_sst)
+labeled_air, N_air = mask_and_cyclic(labeled_air, N_air, True, icec, lat_grid, lon_grid)
+labeled_mslp, N_mslp = mask_and_cyclic(labeled_mslp, N_mslp)
 sst_Dec_mean = cal_series(sst_anom, labeled_sst[0], 12, 'var1')
 sst_Jan_mean = cal_series(sst_anom, labeled_sst[1], 1, 'var2')
 sst_Feb_mean = cal_series(sst_anom, labeled_sst[2], 2, 'var3')
@@ -304,7 +301,6 @@ if os.path.exists(out3_filename):
 sst_ds.to_netcdf(out1_filename)
 air_ds.to_netcdf(out2_filename)
 mslp_ds.to_netcdf(out3_filename)
-
 '''
 in1_file = xarray.open_dataset(out1_filename)
 sst_corr = in1_file['sst_corr']
@@ -332,20 +328,12 @@ mslp_Jan_mean = in3_file['mslp_Jan_mean']
 mslp_Feb_mean = in3_file['mslp_Feb_mean']
 
 #Plot the results
-#labeled_sst[0] = labeled_sst[0].where(numpy.any(numpy.array(
-#    [labeled_sst[0].data == i for i in numpy.array([4])]#5,11,4
-#), axis=0), 0)
-#labeled_sst[1] = labeled_sst[1].where(numpy.any(numpy.array(
-#    [labeled_sst[1].data == i for i in numpy.array([4])]#10,11,4
-#), axis=0), 0)
-#labeled_sst[2] = labeled_sst[2].where(labeled_sst[2] == 7, 0)
-#labeled_air[0] = labeled_air[0].where(labeled_air[0] == 8, 0)
-#labeled_air[1] = labeled_air[1].where(labeled_air[1] == 3, 0)
-#labeled_air[2] = labeled_air[2].where(labeled_air[2] == 1, 0)
-#labeled_mslp[0] = labeled_mslp[0].where(numpy.any(numpy.array(
-#    [labeled_mslp[0].data == i for i in numpy.array([20])]#21,11,20
-#), axis=0), 0)
-#labeled_mslp[1] = labeled_mslp[1].where(labeled_mslp[1] == 9, 0)
+labeled_sst[0] = labeled_sst[0].where(labeled_sst[0] == 8, 0)
+labeled_sst[2] = labeled_sst[2].where(labeled_sst[2] == 12, 0)
+labeled_air[0] = labeled_air[0].where(numpy.any(numpy.array(
+    [labeled_air[0].data == i for i in numpy.array([6,12])]#6,12
+), axis=0), 0)
+labeled_mslp[0] = labeled_mslp[0].where(labeled_mslp[0] == 10, 0)
 '''
 plot_fig(sst_corr,sst_pval,labeled_sst,N_sst)
 plot_fig(air_corr,air_pval,labeled_air,N_air)
